@@ -256,6 +256,7 @@ void loop() {
             server.handleClient();
         } while (micros() < ap_time);
         server.stop();
+        WiFi.mode(WIFI_OFF);
         ap_mode = false;
         Serial.println("Cleanup SD Card...");
         cleanupSDCARD();
