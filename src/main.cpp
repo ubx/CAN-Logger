@@ -82,11 +82,11 @@ String printDirectory(File dir, int numTabs) {
         File entry = dir.openNextFile();
         if (!entry) {
             // no more files
-            //Serial.println("**nomorefiles**");
+            //Sprintln("**nomorefiles**");
             break;
         }
         for (uint8_t i = 0; i < numTabs; i++) {
-            Serial.print('\t');   // we'll have a nice indentation
+            Sprint('\t');   // we'll have a nice indentation
         }
         // Recurse for directories, otherwise print the currentLogFile size
         if (entry.isDirectory()) {
@@ -117,13 +117,13 @@ bool loadFromSDCARD(String path) {
     else if (path.endsWith(".zip")) dataType = "application/zip";
     else if (path.endsWith(".log")) dataType = "application/download";
 
-    Serial.println(dataType);
+    Sprintln(dataType);
     File dataFile = SD.open(path.c_str());
     if (!dataFile)
         return false;
 
     if (server.streamFile(dataFile, dataType) != dataFile.size()) {
-        Serial.println("Sent less data than expected!");
+        Sprintln("Sent less data than expected!");
     }
 
     dataFile.close();
@@ -144,7 +144,7 @@ void handleNotFound() {
         message += " NAME:" + server.argName(i) + "\n VALUE:" + server.arg(i) + "\n";
     }
     server.send(404, "text/plain", message);
-    Serial.println(message);
+    Sprintln(message);
 }
 
 char buffer[100];
@@ -228,22 +228,22 @@ void setup() {
     pinMode(LED, OUTPUT);
 
     /// WiFi AP /////////////////////////////////////////
-    Serial.print("Setting AP (Access Point)…");
+    Sprint("Setting AP (Access Point)…");
     WiFi.softAP(ssid, password);
 
     IPAddress IP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(IP);
+    Sprint("AP IP address: ");
+    Sprintln(IP);
 
     if (MDNS.begin("canlogs")) {
-        Serial.println("MDNS responder started");
+        Sprintln("MDNS responder started");
     }
 
     server.on("/", handleRoot);
     server.onNotFound(handleNotFound);
 
     server.begin();
-    Serial.println("HTTP server started");
+    Sprintln("HTTP server started");
 }
 
 unsigned long ap_time = AP_TIME_MICROS + micros();
@@ -251,16 +251,16 @@ bool ap_mode = true;
 
 void loop() {
     if (ap_mode) {
-        Serial.println("AP Mode ...");
+        Sprintln("AP Mode ...");
         do {
             server.handleClient();
         } while (micros() < ap_time);
         server.stop();
         WiFi.mode(WIFI_OFF);
         ap_mode = false;
-        Serial.println("Cleanup SD Card...");
+        Sprintln("Cleanup SD Card...");
         cleanupSDCARD();
-        Serial.println("CAN Mode ...");
+        Sprintln("CAN Mode ...");
     } else {
         receiveFromCan();
     }
