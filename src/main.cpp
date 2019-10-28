@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2019  Andreas Lüthi {
+ Copyright (C) 2019  Andreas Lüthi
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation, either version 3 of the License, or
@@ -12,7 +12,6 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
- }
 */
 
 #include <ESP32CAN.h>
@@ -38,7 +37,8 @@
 
 #define LED 13
 #define FLUSH_FREQ 1000
-#define AP_TIME_MICROS 3*60*1000ULL*1000ULL // 3 min
+#define AP_TIME_MICROS 1*60*1000ULL*1000ULL // 3 min
+#define CLEANUP_SD_CARD_SIZE  0.5  //
 
 
 CAN_device_t CAN_cfg = {
@@ -48,12 +48,15 @@ CAN_device_t CAN_cfg = {
         xQueueGenericCreate((1000), (sizeof(CAN_frame_t)), (((uint8_t) 0U)))
 };
 
+#define LOGFLIE_PREFIX "/candump-"
 char currentLogFileName[40];
 File currentLogFile;
 
 // AP: Replace with your network credentials
 const char *ssid = "CAN-Logger-AP";
 const char *password = "123456789";
+
+std::vector<File> logfiles;
 
 
 WebServer server(80);
@@ -63,7 +66,7 @@ String formatSize(size_t size) {
     const char *suffixes[] = {"B", "KB", "MB", "GB", "TB"};
     uint s = 0; // which suffix to use
     double count = size;
-    while (count >= 1024 && s < 5) {
+    while (count >= 1024 and s < 5) {
         s++;
         count /= 1024;
     }
@@ -81,8 +84,6 @@ String printDirectory(File dir, int numTabs) {
     while (true) {
         File entry = dir.openNextFile();
         if (!entry) {
-            // no more files
-            //Sprintln("**nomorefiles**");
             break;
         }
         for (uint8_t i = 0; i < numTabs; i++) {
@@ -95,6 +96,7 @@ String printDirectory(File dir, int numTabs) {
             response +=
                     String("<a href='") + String(entry.name()) + String("'>") + String(entry.name())
                     + String("</a>") + String("  ") + String(formatSize(entry.size())) + String("</br>");
+            logfiles.push_back(entry);
         }
         entry.close();
     }
@@ -179,12 +181,34 @@ void receiveFromCan() {//receive next CAN frame from queue
 }
 
 void cleanupSDCARD() {
-    // todo -- free space on SD card
-    if (SD.usedBytes() / SD.cardSize() > 0.8) {
-        // cleanup
-    }
-}
+    std::vector<String> logfiles;
+    File entry = SD.open("/");
+    entry.rewindDirectory();
 
+    entry = entry.openNextFile();
+    while (entry) {
+//        if (!entry.isDirectory() and String(entry.name()).startsWith(LOGFLIE_PREFIX)) {
+        if (!entry.isDirectory()) {
+            logfiles.push_back(String(entry.name()));
+        }
+        entry.close();
+    }
+
+    while ((static_cast<float>((SD.usedBytes()) / 1000000.0) / (static_cast<float>(SD.totalBytes() / 1000000.0)) >
+            CLEANUP_SD_CARD_SIZE) and !logfiles.empty()) {
+        String filename = logfiles.at(0);
+//        char rfn[40];
+//        sprintf(rfn, "%s", filename.c_str());
+        SD.remove(filename);
+        Sprintf("Removed file: %s\n", filename.c_str());
+        logfiles.erase(logfiles.begin());
+    }
+    int fn = 0;
+    if (logfiles.size() > 0) {
+        fn = (std::atoi(String((logfiles.back())).substring(8, 11).c_str()) + 1) % 1000;
+    }
+    sprintf(currentLogFileName, LOGFLIE_PREFIX "%03d.log", fn);
+}
 
 void setup() {
     Serial.begin(115200);
@@ -213,13 +237,6 @@ void setup() {
     Sprintf("SD Card Size: %lluMB\n", SD.cardSize() / (1024 * 1024));
     Sprintf("Total space: %lluMB\n", SD.totalBytes() / (1024 * 1024));
     Sprintf("Used space: %lluMB\n", SD.usedBytes() / (1024 * 1024));
-
-    // create a unique currentLogFile name
-    int fn = 0;
-    do {
-        sprintf(currentLogFileName, "/candump-%d.log", fn++);
-    } while (SD.exists(currentLogFileName));
-    currentLogFile = SD.open(currentLogFileName, FILE_APPEND);
 
     /// start CAN Module ////////////////////////////////
     CAN_init();
@@ -258,9 +275,12 @@ void loop() {
         server.stop();
         WiFi.mode(WIFI_OFF);
         ap_mode = false;
+
         Sprintln("Cleanup SD Card...");
         cleanupSDCARD();
+
         Sprintln("CAN Mode ...");
+        currentLogFile = SD.open(currentLogFileName, FILE_APPEND);
     } else {
         receiveFromCan();
     }
